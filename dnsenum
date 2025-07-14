@@ -1,0 +1,75 @@
+#!/bin/python3
+import dns.resolver
+import socket
+import time
+import argparse
+
+#Enumerate subdomains from domains
+def enumerate_subdomains(domain, wordlist_file):
+    try:
+        print(f"[*] Processing domain {domain}")
+        time.sleep(1)
+
+        # Get authoritative nameservers (once)
+        try:
+            ns_records = dns.resolver.resolve(domain, 'NS')
+            nameservers = []
+            for ns in ns_records:
+                ns_text = ns.to_text()       # Convert to string (e.g., "ns1.google.com.")
+                cleaned_ns = ns_text[:-1]    # Remove trailing dot
+                nameservers.append(cleaned_ns)  # Add to list
+            print('[+] Getting nameservers')
+            time.sleep(1)
+            for nameserver in nameservers:
+                try:
+                    ip = socket.gethostbyname(nameserver)
+                    print(f"{ip} - {nameserver} ({domain})")
+                except socket.gaierror:
+                    print(f"Could not resolve IP for {nameserver}")
+        except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+            print(f"[-] Could not fetch nameservers for {domain}")
+        except Exception as e:
+            print(f"[-] Error getting nameservers")
+            
+        print(f'[*] Scanning {domain} for A records')
+        time.sleep(1)
+        
+        # Check each subdomain from wordlist
+        try:
+            with open(wordlist_file, 'r') as file:
+                for line in file:
+                    subdomain = line.strip()
+                    if not subdomain:  # Skip empty lines
+                        continue
+                        
+                    full_domain = f"{subdomain}.{domain}"
+                    try:
+                        # Resolve A record
+                        answers = dns.resolver.resolve(full_domain, 'A')
+                        for ip in answers:
+                            print(f"[+] Found: {full_domain} -> {ip.to_text()}")
+                    except dns.resolver.NXDOMAIN:
+                        pass  # Silently skip non-existent subdomains
+                    except dns.resolver.NoAnswer:
+                        print(f"[-] No A record for: {full_domain}")
+                    except Exception as e:
+                        print(f"[-] Error querying {full_domain}")
+        except FileNotFoundError:
+            print(f"[-] Error: Wordlist file '{wordlist_file}' not found")
+        except Exception as e:
+            print(f"[-] Error reading wordlist: {str(e)}")
+    except KeyboardInterrupt as err:
+            print(f'{err} : Terminated by User')
+            
+def main():
+    # Argument parser
+    parser = argparse.ArgumentParser(description='DNS enumerator - finds subdomains and their IP addresses')
+    parser.add_argument('--domain', '-d', help='Domain to enumerate', required=True)
+    parser.add_argument('--wordlist', '-w', help='File containing subdomains to test', required=True)
+    args = parser.parse_args()
+    
+    enumerate_subdomains(args.domain, args.wordlist)
+
+
+if __name__ == "__main__":
+    main()
